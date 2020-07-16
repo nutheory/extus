@@ -64,6 +64,9 @@ defmodule ExTus.Actions do
       |> resp(400, "Bad Request")
     else
       # %{size: current_offset} = File.stat!(file_path)
+      IO.inspect(offset, label: "offset from header")
+      IO.inspect(upload_info, label: "upload_info from cache")
+
       if offset != upload_info.offset do
         conn
         |> Utils.set_base_resp()
@@ -74,7 +77,7 @@ defmodule ExTus.Actions do
           {_, binary, conn} ->
             data_length = byte_size(binary)
             upload_info = Map.put(upload_info, :offset, data_length + upload_info.offset)
-
+            IO.inspect(upload_info, label: "NEW MAP")
             # check Checksum if received a checksum digest
             if alg in ExTus.Config.hash_algorithms() do
               alg = if alg == "sha1", do: "sha", else: alg
@@ -88,13 +91,18 @@ defmodule ExTus.Actions do
                 |> Utils.set_base_resp()
                 |> resp(460, "Checksum Mismatch")
               else
+                IO.inspect(checksum, label: "checksum else")
+                IO.inspect(hash_val, label: "checksum else hash")
                 write_append_data(conn, upload_info, binary, complete_cb)
               end
             else
+              IO.inspect(alg, label: "ALG else")
               write_append_data(conn, upload_info, binary, complete_cb)
             end
 
           {:error, _term} ->
+            IO.inspect(label: "8MB case error")
+
             conn
             |> Utils.set_base_resp()
             |> resp(500, "Server error")
