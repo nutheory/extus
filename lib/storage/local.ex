@@ -2,33 +2,33 @@ defmodule ExTus.Storage.Local do
   use ExTus.Storage
 
   def storage_dir() do
-    time = DateTime.utc_now
+    time = DateTime.utc_now()
     "#{time.year}/#{time.month}/#{time.day}"
   end
 
-  def filename(file_name) do
-     base_name = Path.basename(file_name, Path.extname(file_name))
-     timestamp = DateTime.utc_now |> DateTime.to_unix
-     "#{base_name}_#{timestamp}#{Path.extname(file_name)}"
+  def filename(file_name, uniq_id) do
+    # base_name = Path.basename(file_name, Path.extname(file_name))
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+    IO.inspect(Path.extname(file_name), label: "EXTTTTTTTTTTT")
+    "#{uniq_id}_#{timestamp}#{Path.extname(file_name)}"
   end
 
-  def initiate_file(file_name) do
+  def initiate_file(%{file_name: file_name, uniq_id: uniq_id}) do
     dir = storage_dir()
-    filename = filename(file_name)
+    filename = filename(file_name, uniq_id)
 
     File.mkdir_p!(Path.join(base_dir(), dir))
-    file_path = Path.join(dir, filename)
+    local_path = Path.join(dir, filename)
 
-    full_path(file_path)
+    full_path(local_path)
     |> File.open!([:write])
-    |> File.close
+    |> File.close()
 
-    identifier = :crypto.hash(:sha256, filename) |> Base.encode16
-    {:ok, {identifier, file_path}}
+    identifier = :crypto.hash(:sha256, filename) |> Base.encode16()
+    {:ok, {identifier, local_path, filename}}
   end
 
   def put_file(%{filename: _file_path}, _destination) do
-
   end
 
   def append_data(%{filename: file_path} = info, data) do
@@ -39,9 +39,12 @@ defmodule ExTus.Storage.Local do
         IO.binwrite(file, data)
         File.close(file)
         {:ok, info}
+
       {:error, err} ->
         {:error, err}
-       _ -> {:error, :unknown}
+
+      _ ->
+        {:error, :unknown}
     end
   end
 
@@ -51,20 +54,19 @@ defmodule ExTus.Storage.Local do
 
   def abort_upload(%{filename: file}) do
     full_path(file)
-    |> File.rm
+    |> File.rm()
   end
 
   def url(_file) do
-		
   end
 
   def delete(%{filename: file_path}) do
     full_path(file_path)
-    |> File.rm
+    |> File.rm()
   end
 
-	defp base_dir, do: Application.get_env(:extus, :base_dir, "upload")
-	
+  defp base_dir, do: Application.get_env(:extus, :base_dir, "upload")
+
   defp full_path(file_path) do
     Path.join(base_dir(), file_path)
   end

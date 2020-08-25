@@ -63,10 +63,6 @@ defmodule ExTus.Actions do
       |> Utils.set_base_resp()
       |> resp(400, "Bad Request")
     else
-      # %{size: current_offset} = File.stat!(file_path)
-      IO.inspect(offset, label: "offset from header")
-      IO.inspect(upload_info, label: "upload_info from cache")
-
       if offset != upload_info.offset do
         conn
         |> Utils.set_base_resp()
@@ -77,7 +73,7 @@ defmodule ExTus.Actions do
           {_, binary, conn} ->
             data_length = byte_size(binary)
             upload_info = Map.put(upload_info, :offset, data_length + upload_info.offset)
-            IO.inspect(upload_info, label: "NEW MAP")
+
             # check Checksum if received a checksum digest
             if alg in ExTus.Config.hash_algorithms() do
               alg = if alg == "sha1", do: "sha", else: alg
@@ -91,18 +87,13 @@ defmodule ExTus.Actions do
                 |> Utils.set_base_resp()
                 |> resp(460, "Checksum Mismatch")
               else
-                IO.inspect(checksum, label: "checksum else")
-                IO.inspect(hash_val, label: "checksum else hash")
                 write_append_data(conn, upload_info, binary, complete_cb)
               end
             else
-              IO.inspect(alg, label: "ALG else")
               write_append_data(conn, upload_info, binary, complete_cb)
             end
 
           {:error, _term} ->
-            IO.inspect(label: "8MB case error")
-
             conn
             |> Utils.set_base_resp()
             |> resp(500, "Server error")
@@ -130,7 +121,7 @@ defmodule ExTus.Actions do
           UploadCache.delete(upload_info.identifier)
 
           if not is_nil(complete_cb) do
-            complete_cb.(upload_info)
+            complete_cb.(conn, upload_info)
           end
         end
 
@@ -151,7 +142,6 @@ defmodule ExTus.Actions do
 
   def post(conn, create_cb) do
     headers = Utils.read_headers(conn)
-
     meta = Utils.parse_meta_data(headers["upload-metadata"])
     {upload_length, _} = Integer.parse(headers["upload-length"])
 
@@ -160,22 +150,46 @@ defmodule ExTus.Actions do
       |> resp(413, "")
     else
       file_name =
-        (meta["filename"] || "")
+        (meta["origname"] || "")
         |> Base.decode64!()
 
-      {:ok, {identifier, filename}} = storage().initiate_file(file_name)
+      uniq_id =
+        (meta["uniqid"] || "")
+        |> Base.decode64!()
+
+      context =
+        (meta["context"] || "")
+        |> Base.decode64!()
+
+      item_type =
+        (meta["itemtype"] || "")
+        |> Base.decode64!()
+
+      name =
+        (meta["assetname"] || "")
+        |> Base.decode64!()
+
+      usr = conn.assigns.context.usr
+
+      {:ok, {identifier, local_path, filename}} =
+        storage().initiate_file(%{file_name: file_name, uniq_id: uniq_id})
 
       info = %UploadInfo{
         identifier: identifier,
-        filename: filename,
+        filename: local_path,
+        name: name,
+        item_type: item_type,
         size: upload_length,
+        options: %{
+          store_url: "#{context}/#{usr.account_id}/#{item_type}/#{usr.id}/#{filename}"
+        },
         started_at: DateTime.utc_now() |> DateTime.to_iso8601()
       }
 
       UploadCache.put(info)
 
       if create_cb do
-        create_cb.(info)
+        create_cb.(conn, info)
       end
 
       location =
@@ -183,11 +197,18 @@ defmodule ExTus.Actions do
         |> URI.merge(Path.join(ExTus.Config.upload_url(), identifier))
         |> to_string
 
-      conn
-      |> put_resp_header("Tus-Resumable", ExTus.Config.tus_api_version())
-      |> put_resp_header("Location", location)
-      |> Utils.put_cors_headers()
-      |> resp(201, "")
+      if conn.assigns.context.usr do
+        conn
+        |> put_resp_header("Tus-Resumable", ExTus.Config.tus_api_version())
+        |> put_resp_header("Location", location)
+        |> put_resp_header("Upload-Concat", "partial")
+        |> Utils.put_cors_headers()
+        |> resp(201, "")
+      else
+        conn
+        |> Utils.put_cors_headers()
+        |> resp(401, "No")
+      end
     end
   end
 
@@ -220,15 +241,15 @@ defmodule ExTus.Actions do
     if headers["access-control-request-method"] do
       conn
       |> put_resp_header(
-        "Access-Control-Allow-Methods",
+        "access-control-allow-methods",
         "POST, GET, HEAD, PATCH, DELETE, OPTIONS"
       )
-      |> put_resp_header("Access-Control-Allow-Origin", "null")
+      |> put_resp_header("access-control-allow-origin", "*")
       |> put_resp_header(
-        "Access-Control-Allow-Headers",
+        "access-control-allow-headers",
         "Origin, X-Requested-With, Content-Type, Upload-Length, Upload-Offset, Tus-Resumable, Upload-Metadata"
       )
-      |> put_resp_header("Access-Control-Max-Age", "86400")
+      |> put_resp_header("access-control-max-age", "86400")
     else
       conn
     end

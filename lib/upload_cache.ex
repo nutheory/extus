@@ -1,5 +1,12 @@
 defmodule ExTus.UploadInfo do
-  defstruct identifier: "", filename: "", offset: 0, size: 0, started_at: nil, options: %{}
+  defstruct identifier: "",
+            filename: "",
+            name: "",
+            item_type: "",
+            offset: 0,
+            size: 0,
+            started_at: nil,
+            options: %{}
 end
 
 defmodule ExTus.UploadCache do
@@ -54,11 +61,6 @@ defmodule ExTus.UploadCache do
     {:reply, elem(found, 1), state}
   end
 
-  def handle_call(request, from, state) do
-    # Call the default implementation from GenServer
-    super(request, from, state)
-  end
-
   def handle_cast({:update, item}, state) do
     item = Map.delete(item, :__struct__)
     :ets.insert(:upload_cache, {item.identifier, item})
@@ -68,10 +70,6 @@ defmodule ExTus.UploadCache do
   def handle_cast({:delete, key}, state) do
     :ets.delete(:upload_cache, key)
     {:noreply, state}
-  end
-
-  def handle_cast(request, state) do
-    super(request, state)
   end
 
   def handle_info(:clean, state) do
@@ -89,6 +87,15 @@ defmodule ExTus.UploadCache do
       now = DateTime.utc_now() |> DateTime.to_unix()
       now - time > @expired_after
     end)
+    |> Enum.map(fn {key, data} ->
+      storage = Application.get_env(:extus, :storage)
+      if storage, do: storage.abort_upload(data)
+      :ets.delete(:upload_cache, key)
+    end)
+  end
+
+  def remove_all() do
+    :ets.tab2list(:upload_cache)
     |> Enum.map(fn {key, data} ->
       storage = Application.get_env(:extus, :storage)
       if storage, do: storage.abort_upload(data)
