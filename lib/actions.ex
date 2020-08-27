@@ -22,7 +22,6 @@ defmodule ExTus.Actions do
 
   def head(conn, identifier) do
     upload_info = UploadCache.get(identifier)
-    IO.inspect(conn.scheme, label: "HEAD")
 
     if is_nil(upload_info) do
       conn

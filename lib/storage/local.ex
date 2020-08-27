@@ -9,7 +9,6 @@ defmodule ExTus.Storage.Local do
   def filename(file_name, uniq_id) do
     # base_name = Path.basename(file_name, Path.extname(file_name))
     timestamp = DateTime.utc_now() |> DateTime.to_unix()
-    IO.inspect(Path.extname(file_name), label: "EXTTTTTTTTTTT")
     "#{uniq_id}_#{timestamp}#{Path.extname(file_name)}"
   end
 
